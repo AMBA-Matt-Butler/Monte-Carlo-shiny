@@ -1,0 +1,148 @@
+library(shiny)
+library(triangle)
+library(ggplot2)
+library(shinythemes)
+library(shinyWidgets)
+library(shinyjs)
+library(rsconnect)
+library(plotly)
+library(ggtext)
+#conditionalPanel
+
+# User Interface                   
+ui <- fluidPage(theme = shinytheme("yeti"),
+                title = "Monte Carlo Histogram",
+                fluidRow( #Title
+                         column(width = 12, align = "center", 
+                                h1("Monte Carlo Histogram"))
+                ),
+                fluidRow( #All Body Content
+                         column(width = 12,
+                                fluidRow(
+                                         column(width = 6, #Input Content
+                                                fluidRow(
+                                                         column(width = 12, (h3("Input Information"))),
+                                                fluidRow(
+                                                         column(width = 12, offset= 1, (h4("Element 1"))),
+                                                fluidRow(
+                                                         column(p(" "), offset= 1, width = 3, (textInput("min1", p("Minimum Value:"), value = 0))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("central1", p("Most Likely Value:"), value = 1))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("max1", p("Maximum Value:"), value = 2)))),
+                                                fluidRow(
+                                                         column(width = 12, offset= 1, (h4("Element 2")))),
+                                                fluidRow(
+                                                         column(p(" "), offset= 1, width = 3, (textInput("min2", p("Minimum Value:"), value = 0))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("central2", p("Most Likely Value:"), value = 0))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("max2", p("Maximum Value:"), value = 0))))),
+                                                fluidRow(
+                                                         column(width = 12, offset= 1, (h4("Element 3"))),
+                                                fluidRow(
+                                                         column(p(" "), offset= 1, width = 3, (textInput("min3", p("Minimum Value:"), value = 0))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("central3", p("Most Likely Value:"), value = 0))),
+                                                         column(p(" "), offset= 0, width = 3, (textInput("max3", p("Maximum Value:"), value = 0)))),
+                                                fluidRow(
+                                                         column(width = 12,  align="center",
+                                                               (shinyWidgets::sliderTextInput(inputId = "bins",
+                                                                                              label = "Number of simulations:",
+                                                                                              choices = c(1, 10, 100, 1000, 10000, 100000, 1000000),
+                                                                                              selected = 10000, grid = T))))
+                                              ) # Close Input title Row
+                                         )), #Close Input COlumn
+                                         column(width = 6, #Output Content
+                                                fluidRow(
+                                                         column(width = 12, align = "middle", h3("Output Graph"))),
+                                                fluidRow(
+                                                         column(width = 12, align = "middle", wellPanel(plotOutput(outputId = "distPlot"))))
+                                                
+                                         )
+                                ) #Close Body Row
+                         ) #close Body Column
+                ) #close fluidRow
+) #close fluidPage
+
+                            
+
+
+
+
+####################################
+# Server                           #
+####################################
+server <- function(input, output) {
+  
+   # Status/Output Text Box
+  output$distPlot <- renderPlot({
+    
+    cost_estimate <- data.frame(low = 0, medium = 1, high = 2)
+    cost_estimate[1,1] <- as.numeric(input$min1)
+    cost_estimate[1,2] <- as.numeric(input$central1)
+    cost_estimate[1,3] <- as.numeric(input$max1)
+    
+    cost_estimate[2,1] <- as.numeric(input$min2)
+    cost_estimate[2,2] <- as.numeric(input$central2)
+    cost_estimate[2,3] <- as.numeric(input$max2)
+    
+    cost_estimate[3,1] <- as.numeric(input$min3)
+    cost_estimate[3,2] <- as.numeric(input$central3)
+    cost_estimate[3,3] <- as.numeric(input$max3)
+    
+    monte_carlo_matrix <- function(n){
+      #Runs n simulations
+      j <- nrow(cost_estimate)
+      mc_sims <- matrix(ncol = n,
+                        nrow = j)
+      for (i in 1:j){
+        mc_sims[i,] <- rtriangle(n = n,
+                                 a = cost_estimate$low[i],
+                                 b = cost_estimate$high[i],
+                                 c = cost_estimate$medium[i])}
+      #Aggrgates each element for a total
+      mc_results <- colSums(mc_sims)
+      return(mc_results)
+    }
+    monte_carlo_histogram <- function(matrix){
+      mc_total <- data.frame(mc_total = matrix)
+      n <- length(matrix)
+      #quantiles
+      p95 <- quantile(matrix, 0.95)
+      p90 <- quantile(matrix, 0.9)
+      p70 <- quantile(matrix, 0.7)
+      p50 <- quantile(matrix, 0.5)
+      p44.5 <- quantile(matrix, 0.45)
+      p10 <- quantile(matrix, 0.1)
+      p05 <- quantile(matrix, 0.05)
+      #Build histogram
+      a <- ggplot(mc_total, aes(x=mc_total))+
+        geom_histogram(aes(y=..density..), color = "black", bins = 200)+
+        geom_density(fill = I("white"), alpha = 0.3)+
+        #geom_vline(xintercept=p05, linetype="dashed")+
+        geom_vline(xintercept=p10, linetype="dashed")+
+        #annotate("text", x= p10, y = 1, label = "P10", hjust=-0.2)+
+        geom_vline(xintercept=p50, linetype="dashed", color = "red")+
+        #annotate("text", x= p50, y = 1, label = "P50", hjust=-0.2, color = "red")+
+        geom_vline(xintercept=p70, linetype="dashed")+
+        #annotate("text", x= p70, y = 1, label = "P70", hjust=-0.2)+
+        geom_vline(xintercept=p90, linetype="dashed")+
+        #annotate("text", x= p90, y = 1, label = "P90", hjust=-0.2)+
+        #geom_vline(xintercept=p95, linetype="dashed")+
+        labs(title = paste("Distribution after", formatC(n, digits = (floor(log10(n)) + 1), format = "d"), " Trials", sep=""),
+             subtitle = paste("P10:", signif(p10,4), "  P50:", signif(p50,4), "  P70:", signif(p70,4),"  P90:", signif(p90,4)))+
+        xlab("Total Cost")+
+        ylab("Density")+
+        theme_minimal()+
+        theme(plot.title = element_text(size = 15, hjust=0.5),
+              plot.subtitle = element_text(size = 12, hjust=0.5),
+              text = element_text(size =13))
+      return(a)
+    }
+    
+    monte_carlo_histogram(monte_carlo_matrix(input$bins))
+    
+  })
+  
+}
+
+####################################
+# Create Shiny App                 #
+####################################
+shinyApp(ui = ui, server = server)
